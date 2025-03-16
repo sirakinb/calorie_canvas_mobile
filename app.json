@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "expo-app-boilerplate",
+    "slug": "expo-app-boilerplate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to analyze meal nutrition.",
+          "cameraPermission": "The app needs access to your camera to take photos of meals."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow CalorieCanvas to access your camera to take photos of meals."
+        }
+      ],
+      "expo-font"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cqjack.expoappboilerplate",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to take photos of your meals for nutrition analysis.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photos to analyze meals for nutritional content.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "package": "com.cqjack.expoappboilerplate"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "e55fcdea-13e2-4c3b-a4c3-59c174184eb5"
+      }
+    }
+  }
+}
