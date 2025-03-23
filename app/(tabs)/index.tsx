@@ -17,7 +17,8 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { analyzeNutrition } from '../../src/utils/nutritionApi';
+import { identifyFoodFromImage, identifyFoodFromText } from '../../src/utils/geminiApi';
+import { parseAndAnalyzeIngredients } from '../../src/utils/spoonacularApi';
 
 export default function TrackMeal() {
   const [mealDescription, setMealDescription] = useState('');
@@ -25,28 +26,43 @@ export default function TrackMeal() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const router = useRouter();
 
-  const handleUploadPhoto = async () => {
+  const handleImagePick = async () => {
     try {
+      // Request permission first
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload food photos.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,
+        base64: true,
       });
 
       if (!result.canceled) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.base64) {
+          const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+          setSelectedImage(base64Image);
+          setMealDescription(''); // Clear description when new image is selected
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
+      Alert.alert('Error', 'Failed to pick image from library');
+      console.error(error);
     }
   };
 
   const handleTakePhoto = async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera permission to take photos');
+      // Request camera permission
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your camera to take food photos.');
         return;
       }
 
@@ -54,13 +70,20 @@ export default function TrackMeal() {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,
+        base64: true,
       });
 
       if (!result.canceled) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.base64) {
+          const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+          setSelectedImage(base64Image);
+          setMealDescription(''); // Clear description when new photo is taken
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to take photo');
+      console.error(error);
     }
   };
 
@@ -72,29 +95,38 @@ export default function TrackMeal() {
 
     setIsAnalyzing(true);
     try {
-      const nutritionData = await analyzeNutrition(selectedImage, mealDescription);
+      let foodInfo;
+      
+      // If there's an image, analyze it with Gemini first
+      if (selectedImage) {
+        foodInfo = await identifyFoodFromImage(selectedImage, mealDescription);
+      } else if (mealDescription) {
+        foodInfo = await identifyFoodFromText(mealDescription);
+      }
+
+      if (!foodInfo) {
+        throw new Error('Failed to identify food');
+      }
+
+      // Get nutrition data from Spoonacular
+      const nutritionData = await parseAndAnalyzeIngredients(foodInfo.ingredients);
       
       // Navigate to dashboard with the new entry
       router.push({
-        pathname: "/(tabs)/dashboard",
+        pathname: "/dashboard",
         params: {
           newEntry: JSON.stringify({
             id: Date.now().toString(),
-            date: new Date(),
+            date: new Date().toISOString(),
             imageUri: selectedImage,
-            description: nutritionData.description,
-            nutrition: {
-              calories: nutritionData.calories,
-              protein: nutritionData.protein,
-              carbs: nutritionData.carbs,
-              fat: nutritionData.fat,
-            },
+            description: foodInfo.description,
+            nutrition: nutritionData,
           }),
         },
       });
     } catch (error) {
       Alert.alert('Error', 'Failed to analyze nutrition. Please try again.');
-      console.error(error);
+      console.error('Error in food analysis:', error);
     } finally {
       setIsAnalyzing(false);
     }
@@ -103,80 +135,100 @@ export default function TrackMeal() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoid}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.logo}>CalorieCanvas</Text>
-          <Text style={styles.tagline}>Track your nutrition with precision</Text>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Add Image (Optional)</Text>
-            <View style={styles.buttonContainer}>
+          <View style={styles.content}>
+            <Text style={styles.title}>Track Your Meal</Text>
+            
+            {selectedImage ? (
+              <Image source={{ uri: selectedImage }} style={styles.image} />
+            ) : (
               <TouchableOpacity
-                style={styles.uploadButton}
-                onPress={handleUploadPhoto}
-              >
-                <Ionicons name="cloud-upload" size={24} color="white" />
-                <Text style={styles.buttonText}>Upload Photo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.uploadButton}
+                style={styles.scanButton}
                 onPress={handleTakePhoto}
               >
-                <Ionicons name="camera" size={24} color="white" />
-                <Text style={styles.buttonText}>Take Photo</Text>
+                <View style={styles.scanButtonContent}>
+                  <Ionicons name="scan-circle-outline" size={80} color="#4CAF50" />
+                  <Text style={styles.scanButtonText}>Scan Food</Text>
+                </View>
               </TouchableOpacity>
-            </View>
+            )}
+            
+            {!selectedImage && (
+              <TouchableOpacity
+                style={[styles.button, styles.uploadButton]}
+                onPress={handleImagePick}
+              >
+                <Ionicons name="cloud-upload" size={24} color="#fff" />
+                <Text style={styles.buttonText}>
+                  Upload from Photos
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {selectedImage && (
-              <View style={styles.imageContainer}>
-                <Image
-                  source={{ uri: selectedImage }}
-                  style={styles.previewImage}
-                />
+              <View style={styles.buttonRow}>
                 <TouchableOpacity
-                  style={styles.clearImageButton}
-                  onPress={() => setSelectedImage(null)}
+                  style={[styles.button, styles.uploadButton, styles.halfButton]}
+                  onPress={handleImagePick}
                 >
-                  <Ionicons name="close-circle" size={24} color="white" />
+                  <Ionicons name="cloud-upload" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Change</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.button, styles.cameraButton, styles.halfButton]}
+                  onPress={handleTakePhoto}
+                >
+                  <Ionicons name="camera" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Retake</Text>
                 </TouchableOpacity>
               </View>
             )}
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Description (Optional)</Text>
             <TextInput
-              style={styles.descriptionInput}
-              placeholder="Describe your meal (e.g. '2 drumsticks and a cup of milk')"
+              style={styles.input}
+              placeholder="Describe your meal (optional)..."
               placeholderTextColor="#666"
               value={mealDescription}
               onChangeText={setMealDescription}
               multiline
             />
+
+            <TouchableOpacity
+              style={[styles.button, styles.analyzeButton, isAnalyzing && styles.disabledButton]}
+              onPress={handleAnalyzeNutrition}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="nutrition" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Analyze Nutrition</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.tipsContainer}>
+              <Text style={styles.tipsTitle}>Tips for Better Results:</Text>
+              <View style={styles.tipRow}>
+                <Ionicons name="camera" size={20} color="#4CAF50" />
+                <Text style={styles.tipText}>Take clear, well-lit photos</Text>
+              </View>
+              <View style={styles.tipRow}>
+                <Ionicons name="restaurant" size={20} color="#4CAF50" />
+                <Text style={styles.tipText}>Include all items in the frame</Text>
+              </View>
+              <View style={styles.tipRow}>
+                <Ionicons name="text" size={20} color="#4CAF50" />
+                <Text style={styles.tipText}>Add descriptions for better accuracy</Text>
+              </View>
+            </View>
           </View>
-
-          <TouchableOpacity
-            style={[
-              styles.analyzeButton,
-              (!selectedImage && !mealDescription.trim() || isAnalyzing) && styles.disabledButton
-            ]}
-            onPress={handleAnalyzeNutrition}
-            disabled={(!selectedImage && !mealDescription.trim()) || isAnalyzing}
-          >
-            {isAnalyzing ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.analyzeButtonText}>Analyze Nutrition</Text>
-            )}
-          </TouchableOpacity>
-
-          <Text style={styles.hint}>
-            You can analyze nutrition using an image, description, or both for best results
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -186,105 +238,130 @@ export default function TrackMeal() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#121212', // Dark background
   },
   keyboardAvoid: {
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
+  },
+  content: {
     padding: 20,
+    alignItems: 'center',
   },
-  logo: {
-    fontSize: 32,
+  title: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: 'white',
-    marginTop: 40,
-    marginBottom: 8,
-    textAlign: 'center',
+    marginBottom: 20,
+    color: '#fff', // White text
   },
-  tagline: {
-    fontSize: 16,
-    color: '#888',
-    marginBottom: 40,
-    textAlign: 'center',
+  scanButton: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    marginVertical: 20,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.30,
+    shadowRadius: 4.65,
   },
-  section: {
-    marginBottom: 24,
+  scanButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionTitle: {
-    fontSize: 18,
+  scanButtonText: {
+    color: '#4CAF50',
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 12,
+    marginTop: 10,
   },
-  buttonContainer: {
+  image: {
+    width: 300,
+    height: 225,
+    borderRadius: 10,
+    marginVertical: 20,
+  },
+  buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginBottom: 12,
+    marginBottom: 20,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderRadius: 10,
+    justifyContent: 'center',
+    marginBottom: 20,
+    width: '100%',
+  },
+  halfButton: {
+    width: '48%',
+    marginBottom: 0,
   },
   uploadButton: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 8,
+    backgroundColor: '#4CAF50', // Green
   },
-  buttonText: {
-    color: 'white',
-    marginTop: 8,
-    fontSize: 16,
-  },
-  imageContainer: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  previewImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-  },
-  clearImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    padding: 4,
-  },
-  descriptionInput: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    minHeight: 100,
-    color: 'white',
-    fontSize: 16,
-    textAlignVertical: 'top',
+  cameraButton: {
+    backgroundColor: '#FF9800', // Orange
   },
   analyzeButton: {
-    backgroundColor: '#00ff9d',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#2196F3', // Blue
     width: '100%',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  analyzeButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    marginBottom: 30,
   },
   disabledButton: {
-    backgroundColor: '#444',
     opacity: 0.7,
   },
-  hint: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 24,
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  input: {
+    width: '100%',
+    height: 100,
+    borderWidth: 1,
+    borderColor: '#333', // Darker border
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+    textAlignVertical: 'top',
+    backgroundColor: '#1a1a1a', // Slightly lighter than background
+    color: '#fff', // White text
+  },
+  tipsContainer: {
+    width: '100%',
+    padding: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  tipsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 15,
+  },
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  tipText: {
+    color: '#ccc',
+    marginLeft: 10,
+    fontSize: 16,
   },
 }); 

@@ -6,9 +6,13 @@ import {
   SafeAreaView,
   ScrollView,
   Image,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams } from 'expo-router';
+import { Swipeable } from 'react-native-gesture-handler';
+import { MaterialIcons } from '@expo/vector-icons';
 
 interface NutritionEntry {
   id: string;
@@ -39,20 +43,58 @@ export default function Dashboard() {
       try {
         const newEntry = JSON.parse(params.newEntry as string);
         setNutritionEntries(prev => [newEntry, ...prev]);
-        updateDailyTotals(newEntry.nutrition);
       } catch (error) {
         console.error('Error parsing new entry:', error);
       }
     }
   }, [params.newEntry]);
 
-  const updateDailyTotals = (nutrition: NutritionEntry['nutrition']) => {
-    setDailyTotals(prev => ({
-      calories: (prev.calories || 0) + (nutrition.calories || 0),
-      protein: (prev.protein || 0) + (nutrition.protein || 0),
-      carbs: (prev.carbs || 0) + (nutrition.carbs || 0),
-      fat: (prev.fat || 0) + (nutrition.fat || 0),
-    }));
+  // Calculate totals whenever entries change
+  useEffect(() => {
+    const totals = nutritionEntries.reduce((acc, entry) => ({
+      calories: (acc.calories || 0) + (entry.nutrition.calories || 0),
+      protein: (acc.protein || 0) + (entry.nutrition.protein || 0),
+      carbs: (acc.carbs || 0) + (entry.nutrition.carbs || 0),
+      fat: (acc.fat || 0) + (entry.nutrition.fat || 0),
+    }), {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+    });
+    
+    setDailyTotals(totals);
+  }, [nutritionEntries]);
+
+  const deleteEntry = (id: string) => {
+    Alert.alert(
+      "Delete Entry",
+      "Are you sure you want to delete this entry?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setNutritionEntries(prev => prev.filter(entry => entry.id !== id));
+          }
+        }
+      ]
+    );
+  };
+
+  const renderRightActions = (id: string) => {
+    return (
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => deleteEntry(id)}
+      >
+        <MaterialIcons name="delete" size={24} color="white" />
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -69,19 +111,19 @@ export default function Dashboard() {
           <Text style={styles.cardTitle}>Today's Summary</Text>
           <View style={styles.nutritionGrid}>
             <View style={styles.nutritionItem}>
-              <Text style={styles.nutritionValue}>{dailyTotals.calories}</Text>
+              <Text style={styles.nutritionValue}>{Math.round(dailyTotals.calories)}</Text>
               <Text style={styles.nutritionLabel}>Calories</Text>
             </View>
             <View style={styles.nutritionItem}>
-              <Text style={styles.nutritionValue}>{dailyTotals.protein}g</Text>
+              <Text style={styles.nutritionValue}>{Math.round(dailyTotals.protein)}g</Text>
               <Text style={styles.nutritionLabel}>Protein</Text>
             </View>
             <View style={styles.nutritionItem}>
-              <Text style={styles.nutritionValue}>{dailyTotals.carbs}g</Text>
+              <Text style={styles.nutritionValue}>{Math.round(dailyTotals.carbs)}g</Text>
               <Text style={styles.nutritionLabel}>Carbs</Text>
             </View>
             <View style={styles.nutritionItem}>
-              <Text style={styles.nutritionValue}>{dailyTotals.fat}g</Text>
+              <Text style={styles.nutritionValue}>{Math.round(dailyTotals.fat)}g</Text>
               <Text style={styles.nutritionLabel}>Fat</Text>
             </View>
           </View>
@@ -98,23 +140,28 @@ export default function Dashboard() {
             </View>
           ) : (
             nutritionEntries.map((entry) => (
-              <View key={entry.id} style={styles.entryCard}>
-                {entry.imageUri && (
-                  <Image
-                    source={{ uri: entry.imageUri }}
-                    style={styles.entryImage}
-                  />
-                )}
-                <View style={styles.entryDetails}>
-                  <Text style={styles.entryDescription}>{entry.description}</Text>
-                  <Text style={styles.entryNutrition}>
-                    {entry.nutrition.calories} cal • {entry.nutrition.protein}g protein
-                  </Text>
-                  <Text style={styles.entryDate}>
-                    {new Date(entry.date).toLocaleDateString()}
-                  </Text>
+              <Swipeable
+                key={entry.id}
+                renderRightActions={() => renderRightActions(entry.id)}
+              >
+                <View style={styles.entryCard}>
+                  {entry.imageUri && (
+                    <Image
+                      source={{ uri: entry.imageUri }}
+                      style={styles.entryImage}
+                    />
+                  )}
+                  <View style={styles.entryDetails}>
+                    <Text style={styles.entryDescription}>{entry.description}</Text>
+                    <Text style={styles.entryNutrition}>
+                      {Math.round(entry.nutrition.calories || 0)} cal • {Math.round(entry.nutrition.protein || 0)}g protein
+                    </Text>
+                    <Text style={styles.entryDate}>
+                      {new Date(entry.date).toLocaleDateString()}
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              </Swipeable>
             ))
           )}
         </View>
@@ -225,5 +272,12 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
     fontSize: 16,
+  },
+  deleteButton: {
+    backgroundColor: '#ff4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
   },
 }); 
