@@ -13,10 +13,13 @@ import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STORAGE_KEY = 'nutrition_entries';
 
 interface NutritionEntry {
   id: string;
-  date: Date;
+  date: string;
   imageUri?: string;
   nutrition: {
     calories?: number;
@@ -38,11 +41,43 @@ export default function Dashboard() {
   
   const params = useLocalSearchParams();
 
+  // Load entries from storage on mount
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
+  const loadEntries = async () => {
+    try {
+      const storedEntries = await AsyncStorage.getItem(STORAGE_KEY);
+      if (storedEntries) {
+        setNutritionEntries(JSON.parse(storedEntries));
+      }
+    } catch (error) {
+      console.error('Error loading entries:', error);
+    }
+  };
+
+  const saveEntries = async (entries: NutritionEntry[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    } catch (error) {
+      console.error('Error saving entries:', error);
+    }
+  };
+
   useEffect(() => {
     if (params.newEntry) {
       try {
-        const newEntry = JSON.parse(params.newEntry as string);
-        setNutritionEntries(prev => [newEntry, ...prev]);
+        const newEntry = JSON.parse(params.newEntry as string) as NutritionEntry;
+        
+        // Check if entry with this ID already exists
+        const entryExists = nutritionEntries.some(entry => entry.id === newEntry.id);
+        
+        if (!entryExists) {
+          const updatedEntries = [newEntry, ...nutritionEntries];
+          setNutritionEntries(updatedEntries);
+          saveEntries(updatedEntries);
+        }
       } catch (error) {
         console.error('Error parsing new entry:', error);
       }
@@ -78,8 +113,10 @@ export default function Dashboard() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
-            setNutritionEntries(prev => prev.filter(entry => entry.id !== id));
+          onPress: async () => {
+            const updatedEntries = nutritionEntries.filter(entry => entry.id !== id);
+            setNutritionEntries(updatedEntries);
+            await saveEntries(updatedEntries);
           }
         }
       ]
@@ -154,7 +191,7 @@ export default function Dashboard() {
                   <View style={styles.entryDetails}>
                     <Text style={styles.entryDescription}>{entry.description}</Text>
                     <Text style={styles.entryNutrition}>
-                      {Math.round(entry.nutrition.calories || 0)} cal • {Math.round(entry.nutrition.protein || 0)}g protein
+                      {Math.round(entry.nutrition.calories || 0)} cal • {Math.round(entry.nutrition.protein || 0)}g protein • {Math.round(entry.nutrition.carbs || 0)}g carbs • {Math.round(entry.nutrition.fat || 0)}g fat
                     </Text>
                     <Text style={styles.entryDate}>
                       {new Date(entry.date).toLocaleDateString()}
@@ -257,6 +294,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#00ff9d',
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   entryDate: {
     fontSize: 12,

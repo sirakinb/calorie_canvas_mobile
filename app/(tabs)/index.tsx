@@ -116,7 +116,7 @@ export default function TrackMeal() {
         pathname: "/dashboard",
         params: {
           newEntry: JSON.stringify({
-            id: Date.now().toString(),
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             date: new Date().toISOString(),
             imageUri: selectedImage,
             description: foodInfo.description,

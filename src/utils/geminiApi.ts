@@ -22,13 +22,15 @@ export async function identifyFoodFromImage(base64Image: string, description?: s
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `Analyze this food image${description ? ` and this description: "${description}"` : ''}.
-    List ALL visible ingredients separately, even if they are part of the same dish.
-    For mixed dishes or salads, list each distinct ingredient you can see.
+    List ALL visible ingredients with REALISTIC serving sizes for a typical portion.
+    Be specific about quantities (e.g., "2 slices pound cake", "1/2 cup whipped cream", "1 cup sliced strawberries").
+    For desserts and baked goods, use standard recipe measurements.
     Format your response EXACTLY as a JSON object with two fields:
     1. "description": A brief description of the food
-    2. "ingredients": An array listing EACH visible ingredient with typical serving quantities
-    Example for a mixed berry salad: {"description":"A fresh mixed berry salad","ingredients":["1 cup strawberries","1 cup blueberries","1 cup raspberries"]}
-    IMPORTANT: Response must be ONLY the JSON object, no additional text or formatting.`;
+    2. "ingredients": An array listing EACH ingredient with SPECIFIC quantities
+    Example for a dessert: {"description":"Classic strawberry shortcake with whipped cream","ingredients":["2 slices vanilla pound cake (4 oz total)","1 cup fresh sliced strawberries","1/2 cup whipped cream"]}
+    IMPORTANT: Response must be ONLY the JSON object, no additional text or formatting.
+    IMPORTANT: Use realistic portion sizes that would give accurate nutrition values.`;
 
     const result = await model.generateContent([
       {
