@@ -102,7 +102,28 @@ export async function parseAndAnalyzeIngredients(ingredients: string[]): Promise
     });
 
     // Validate nutrition values for common foods
-    // For desserts like strawberry shortcake, we expect at least 200-300 calories
+    const description = ingredients.join(' ').toLowerCase();
+    const quantity = description.match(/\d+/)?.[0] || '1';
+    const count = parseInt(quantity, 10) || 1;
+
+    // Common food validations
+    if (description.includes('apple')) {
+      const caloriesPerApple = 95;
+      const proteinPerApple = 0.5;
+      const carbsPerApple = 25;
+      const fatPerApple = 0.3;
+      
+      if (totalNutrition.calories < caloriesPerApple * count) {
+        return {
+          calories: caloriesPerApple * count,
+          protein: proteinPerApple * count,
+          carbs: carbsPerApple * count,
+          fat: fatPerApple * count,
+        };
+      }
+    }
+
+    // Dessert validation
     const isLikelyDessert = ingredients.some(ing => 
       ing.toLowerCase().includes('cake') || 
       ing.toLowerCase().includes('cookie') || 
@@ -111,7 +132,6 @@ export async function parseAndAnalyzeIngredients(ingredients: string[]): Promise
     );
 
     if (isLikelyDessert && totalNutrition.calories < 200) {
-      // Use default values for a typical dessert portion
       return {
         calories: 350,
         protein: 5,
@@ -120,13 +140,13 @@ export async function parseAndAnalyzeIngredients(ingredients: string[]): Promise
       };
     }
 
-    // For any food, if calories are suspiciously low (< 50), use minimum values
-    if (totalNutrition.calories < 50 && ingredients.length > 0) {
+    // General minimum values for any food
+    if (totalNutrition.calories < 50 * count && ingredients.length > 0) {
       return {
-        calories: 100,
-        protein: 2,
-        carbs: 15,
-        fat: 5,
+        calories: 100 * count,
+        protein: 2 * count,
+        carbs: 15 * count,
+        fat: 5 * count,
       };
     }
 

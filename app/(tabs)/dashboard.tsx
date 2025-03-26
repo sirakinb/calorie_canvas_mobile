@@ -14,6 +14,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../../contexts/AuthContext';
 
 const STORAGE_KEY = 'nutrition_entries';
 
@@ -31,6 +32,7 @@ interface NutritionEntry {
 }
 
 export default function Dashboard() {
+  const { signOut } = useAuth();
   const [nutritionEntries, setNutritionEntries] = useState<NutritionEntry[]>([]);
   const [dailyTotals, setDailyTotals] = useState({
     calories: 0,
@@ -134,12 +136,26 @@ export default function Dashboard() {
     );
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <Text style={styles.logo}>CalorieCanvas</Text>
-        <Text style={styles.tagline}>Track your nutrition with precision</Text>
+        <View style={styles.headerContent}>
+          <Text style={styles.logo}>CalorieCanvas</Text>
+          <Text style={styles.tagline}>Track your nutrition with precision</Text>
+        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <MaterialIcons name="logout" size={24} color="#ff6b00" />
+        </TouchableOpacity>
       </View>
       
       <ScrollView style={styles.content}>
@@ -213,10 +229,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
   },
   header: {
-    alignItems: 'center',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  logoutButton: {
+    padding: 8,
   },
   logo: {
     fontSize: 32,

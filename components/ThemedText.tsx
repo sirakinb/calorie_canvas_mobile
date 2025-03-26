@@ -1,60 +1,38 @@
-import { Text, type TextProps, StyleSheet } from 'react-native';
+import { Text, TextProps, StyleSheet } from 'react-native';
+import { useMemo } from 'react';
 
-import { useThemeColor } from '@/hooks/useThemeColor';
+interface ThemedTextProps extends TextProps {
+  type?: 'default' | 'title' | 'defaultSemiBold';
+}
 
-export type ThemedTextProps = TextProps & {
-  lightColor?: string;
-  darkColor?: string;
-  type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
-};
+export function ThemedText({ style, type = 'default', ...props }: ThemedTextProps) {
+  const textStyle = useMemo(() => {
+    switch (type) {
+      case 'title':
+        return styles.title;
+      case 'defaultSemiBold':
+        return styles.defaultSemiBold;
+      default:
+        return styles.default;
+    }
+  }, [type]);
 
-export function ThemedText({
-  style,
-  lightColor,
-  darkColor,
-  type = 'default',
-  ...rest
-}: ThemedTextProps) {
-  const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
-
-  return (
-    <Text
-      style={[
-        { color },
-        type === 'default' ? styles.default : undefined,
-        type === 'title' ? styles.title : undefined,
-        type === 'defaultSemiBold' ? styles.defaultSemiBold : undefined,
-        type === 'subtitle' ? styles.subtitle : undefined,
-        type === 'link' ? styles.link : undefined,
-        style,
-      ]}
-      {...rest}
-    />
-  );
+  return <Text style={[textStyle, style]} {...props} />;
 }
 
 const styles = StyleSheet.create({
   default: {
+    color: '#fff',
     fontSize: 16,
-    lineHeight: 24,
-  },
-  defaultSemiBold: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 32,
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '600',
   },
-  subtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  link: {
-    lineHeight: 30,
+  defaultSemiBold: {
+    color: '#fff',
     fontSize: 16,
-    color: '#0a7ea4',
+    fontWeight: '600',
   },
 });

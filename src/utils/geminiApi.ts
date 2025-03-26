@@ -22,15 +22,21 @@ export async function identifyFoodFromImage(base64Image: string, description?: s
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `Analyze this food image${description ? ` and this description: "${description}"` : ''}.
-    List ALL visible ingredients with REALISTIC serving sizes for a typical portion.
-    Be specific about quantities (e.g., "2 slices pound cake", "1/2 cup whipped cream", "1 cup sliced strawberries").
-    For desserts and baked goods, use standard recipe measurements.
+    List ALL visible ingredients with REALISTIC serving sizes. For multiple items, specify the total quantity.
+    Be specific about quantities and count:
+    - For fruits/vegetables: "6 medium apples", "3 large bananas", etc.
+    - For groups of items: "12 strawberries (2 cups)", "8 apple slices", etc.
+    - For portions: "2 cups cooked rice", "3 slices bread", etc.
+    
     Format your response EXACTLY as a JSON object with two fields:
-    1. "description": A brief description of the food
+    1. "description": A brief description of the food, including approximate total quantity
     2. "ingredients": An array listing EACH ingredient with SPECIFIC quantities
-    Example for a dessert: {"description":"Classic strawberry shortcake with whipped cream","ingredients":["2 slices vanilla pound cake (4 oz total)","1 cup fresh sliced strawberries","1/2 cup whipped cream"]}
+    
+    Example for multiple items: {"description":"A pile of 8 medium red apples","ingredients":["8 medium red apples (approximately 1.5 pounds)"]}
+    Example for mixed items: {"description":"A fruit bowl with mixed berries","ingredients":["2 cups strawberries (12 large)","1 cup blueberries","1 cup raspberries"]}
+    
     IMPORTANT: Response must be ONLY the JSON object, no additional text or formatting.
-    IMPORTANT: Use realistic portion sizes that would give accurate nutrition values.`;
+    IMPORTANT: Always specify the total count/quantity for multiple items.`;
 
     const result = await model.generateContent([
       {
