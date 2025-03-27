@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   return (
@@ -7,37 +8,36 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1a1a1a',
-          borderTopColor: '#333',
+          backgroundColor: '#000',
+          borderTopColor: '#222',
         },
-        tabBarActiveTintColor: '#00ff9d',
-        tabBarInactiveTintColor: '#888',
-      }}
-    >
+        tabBarActiveTintColor: '#4ADE80',
+        tabBarInactiveTintColor: '#666',
+      }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Track Meal',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="restaurant-outline" size={size} color={color} />
+            <MaterialCommunityIcons name="silverware-fork-knife" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: 'Dashboard',
+          title: 'Food Log',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+            <MaterialCommunityIcons name="view-grid-outline" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="profile"
         options={{
-          title: 'Explore',
+          title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="compass-outline" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />

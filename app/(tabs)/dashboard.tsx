@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,31 +8,48 @@ import {
   Image,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { useAuth } from '../../contexts/AuthContext';
-
-const STORAGE_KEY = 'nutrition_entries';
+import { supabase } from '../../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 interface NutritionEntry {
   id: string;
-  date: string;
-  imageUri?: string;
-  nutrition: {
-    calories?: number;
-    protein?: number;
-    carbs?: number;
-    fat?: number;
-  };
+  user_id: string;
+  created_at: string;
+  image_url?: string;
   description: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  notes?: string;
 }
 
+const getMealTypeIcon = (type?: 'breakfast' | 'lunch' | 'dinner' | 'snack') => {
+  switch (type) {
+    case 'breakfast':
+      return 'sunny-outline';
+    case 'lunch':
+      return 'restaurant-outline';
+    case 'dinner':
+      return 'moon-outline';
+    case 'snack':
+      return 'cafe-outline';
+    default:
+      return 'nutrition-outline';
+  }
+};
+
 export default function Dashboard() {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const [nutritionEntries, setNutritionEntries] = useState<NutritionEntry[]>([]);
   const [dailyTotals, setDailyTotals] = useState({
     calories: 0,
@@ -40,59 +57,83 @@ export default function Dashboard() {
     carbs: 0,
     fat: 0,
   });
+  const [deletedEntry, setDeletedEntry] = useState<NutritionEntry | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
   
   const params = useLocalSearchParams();
 
-  // Load entries from storage on mount
+  // Load entries from Supabase on mount
   useEffect(() => {
-    loadEntries();
-  }, []);
+    if (user) {
+      loadEntries();
+    }
+  }, [user]);
 
   const loadEntries = async () => {
     try {
-      const storedEntries = await AsyncStorage.getItem(STORAGE_KEY);
-      if (storedEntries) {
-        setNutritionEntries(JSON.parse(storedEntries));
+      const { data, error } = await supabase
+        .from('nutrition_entries')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
       }
+
+      setNutritionEntries(data || []);
     } catch (error) {
       console.error('Error loading entries:', error);
+      Alert.alert('Error', 'Failed to load nutrition entries');
     }
   };
 
-  const saveEntries = async (entries: NutritionEntry[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    } catch (error) {
-      console.error('Error saving entries:', error);
-    }
-  };
-
+  // Handle new entry from params
   useEffect(() => {
-    if (params.newEntry) {
+    if (params.newEntry && user) {
       try {
-        const newEntry = JSON.parse(params.newEntry as string) as NutritionEntry;
+        const newEntryData = JSON.parse(params.newEntry as string);
         
-        // Check if entry with this ID already exists
-        const entryExists = nutritionEntries.some(entry => entry.id === newEntry.id);
-        
-        if (!entryExists) {
-          const updatedEntries = [newEntry, ...nutritionEntries];
-          setNutritionEntries(updatedEntries);
-          saveEntries(updatedEntries);
-        }
+        // Save to Supabase
+        const saveEntry = async () => {
+          const { error } = await supabase
+            .from('nutrition_entries')
+            .insert({
+              user_id: user.id,
+              image_url: newEntryData.imageUri,
+              description: newEntryData.description,
+              calories: Math.round(newEntryData.nutrition.calories),
+              protein: Math.round(newEntryData.nutrition.protein),
+              carbs: Math.round(newEntryData.nutrition.carbs),
+              fat: Math.round(newEntryData.nutrition.fat),
+              meal_type: newEntryData.meal_type,
+              notes: newEntryData.notes,
+              created_at: new Date().toISOString(),
+            });
+
+          if (error) {
+            throw error;
+          }
+
+          // Reload entries to get the new one
+          loadEntries();
+        };
+
+        saveEntry();
       } catch (error) {
-        console.error('Error parsing new entry:', error);
+        console.error('Error saving new entry:', error);
+        Alert.alert('Error', 'Failed to save nutrition entry');
       }
     }
-  }, [params.newEntry]);
+  }, [params.newEntry, user]);
 
   // Calculate totals whenever entries change
   useEffect(() => {
     const totals = nutritionEntries.reduce((acc, entry) => ({
-      calories: (acc.calories || 0) + (entry.nutrition.calories || 0),
-      protein: (acc.protein || 0) + (entry.nutrition.protein || 0),
-      carbs: (acc.carbs || 0) + (entry.nutrition.carbs || 0),
-      fat: (acc.fat || 0) + (entry.nutrition.fat || 0),
+      calories: acc.calories + (entry.calories || 0),
+      protein: acc.protein + (entry.protein || 0),
+      carbs: acc.carbs + (entry.carbs || 0),
+      fat: acc.fat + (entry.fat || 0),
     }), {
       calories: 0,
       protein: 0,
@@ -103,38 +144,91 @@ export default function Dashboard() {
     setDailyTotals(totals);
   }, [nutritionEntries]);
 
-  const deleteEntry = (id: string) => {
-    Alert.alert(
-      "Delete Entry",
-      "Are you sure you want to delete this entry?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const updatedEntries = nutritionEntries.filter(entry => entry.id !== id);
-            setNutritionEntries(updatedEntries);
-            await saveEntries(updatedEntries);
-          }
-        }
-      ]
-    );
+  const deleteEntry = async (id: string, entry: NutritionEntry) => {
+    // Trigger haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    try {
+      const { error } = await supabase
+        .from('nutrition_entries')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Store the deleted entry for potential undo
+      setDeletedEntry(entry);
+      setShowUndo(true);
+
+      // Update the UI immediately
+      setNutritionEntries(prev => prev.filter(e => e.id !== id));
+
+      // Hide undo option after 5 seconds
+      setTimeout(() => {
+        setShowUndo(false);
+        setDeletedEntry(null);
+      }, 5000);
+
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+      Alert.alert('Error', 'Failed to delete entry');
+    }
   };
 
-  const renderRightActions = (id: string) => {
+  const undoDelete = async () => {
+    if (!deletedEntry) return;
+
+    try {
+      const { error } = await supabase
+        .from('nutrition_entries')
+        .insert(deletedEntry);
+
+      if (error) {
+        throw error;
+      }
+
+      // Reload entries to get the restored entry
+      loadEntries();
+      setShowUndo(false);
+      setDeletedEntry(null);
+
+    } catch (error) {
+      console.error('Error restoring entry:', error);
+      Alert.alert('Error', 'Failed to restore entry');
+    }
+  };
+
+  const renderRightActions = useCallback((id: string, entry: NutritionEntry) => {
     return (
       <TouchableOpacity
         style={styles.deleteButton}
-        onPress={() => deleteEntry(id)}
+        onPress={() => {
+          Alert.alert(
+            "Delete Entry",
+            "Are you sure you want to delete this entry?",
+            [
+              {
+                text: "Cancel",
+                style: "cancel"
+              },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => deleteEntry(id, entry)
+              }
+            ]
+          );
+        }}
       >
         <MaterialIcons name="delete" size={24} color="white" />
+        <Text style={styles.deleteButtonText}>Delete</Text>
       </TouchableOpacity>
     );
-  };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -184,7 +278,13 @@ export default function Dashboard() {
 
         {/* Recent Entries */}
         <View style={styles.recentEntries}>
-          <Text style={styles.sectionTitle}>Recent Entries</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Entries</Text>
+            <Text style={styles.swipeHint}>
+              <MaterialIcons name="swipe" size={16} color="#888" /> Swipe left to delete
+            </Text>
+          </View>
+          
           {nutritionEntries.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -195,23 +295,48 @@ export default function Dashboard() {
             nutritionEntries.map((entry) => (
               <Swipeable
                 key={entry.id}
-                renderRightActions={() => renderRightActions(entry.id)}
+                renderRightActions={() => renderRightActions(entry.id, entry)}
+                onSwipeableOpen={() => {
+                  if (Platform.OS === 'ios') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                }}
               >
                 <View style={styles.entryCard}>
-                  {entry.imageUri && (
+                  {entry.image_url && (
                     <Image
-                      source={{ uri: entry.imageUri }}
+                      source={{ uri: entry.image_url }}
                       style={styles.entryImage}
                     />
                   )}
                   <View style={styles.entryDetails}>
+                    <View style={styles.entryHeader}>
+                      <View style={styles.mealTypeContainer}>
+                        <Ionicons 
+                          name={getMealTypeIcon(entry.meal_type)} 
+                          size={20} 
+                          color="#00ff9d" 
+                        />
+                        <Text style={styles.mealTypeText}>
+                          {entry.meal_type ? entry.meal_type.charAt(0).toUpperCase() + entry.meal_type.slice(1) : 'Meal'}
+                        </Text>
+                      </View>
+                      <Text style={styles.entryDate}>
+                        {new Date(entry.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    
                     <Text style={styles.entryDescription}>{entry.description}</Text>
+                    
                     <Text style={styles.entryNutrition}>
-                      {Math.round(entry.nutrition.calories || 0)} cal • {Math.round(entry.nutrition.protein || 0)}g protein • {Math.round(entry.nutrition.carbs || 0)}g carbs • {Math.round(entry.nutrition.fat || 0)}g fat
+                      {Math.round(entry.calories || 0)} cal • {Math.round(entry.protein || 0)}g protein • {Math.round(entry.carbs || 0)}g carbs • {Math.round(entry.fat || 0)}g fat
                     </Text>
-                    <Text style={styles.entryDate}>
-                      {new Date(entry.date).toLocaleDateString()}
-                    </Text>
+                    
+                    {entry.notes && (
+                      <Text style={styles.entryNotes}>
+                        {entry.notes}
+                      </Text>
+                    )}
                   </View>
                 </View>
               </Swipeable>
@@ -219,6 +344,16 @@ export default function Dashboard() {
           )}
         </View>
       </ScrollView>
+
+      {/* Undo Snackbar */}
+      {showUndo && (
+        <View style={styles.undoContainer}>
+          <Text style={styles.undoText}>Entry deleted</Text>
+          <TouchableOpacity onPress={undoDelete} style={styles.undoButton}>
+            <Text style={styles.undoButtonText}>UNDO</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -309,6 +444,26 @@ const styles = StyleSheet.create({
   entryDetails: {
     padding: 16,
   },
+  entryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  mealTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 255, 157, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mealTypeText: {
+    color: '#00ff9d',
+    fontSize: 14,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
   entryDescription: {
     fontSize: 16,
     color: 'white',
@@ -335,11 +490,70 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  swipeHint: {
+    color: '#888',
+    fontSize: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   deleteButton: {
     backgroundColor: '#ff4444',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 80,
+    width: 100,
     height: '100%',
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  undoContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  undoText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  undoButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  undoButtonText: {
+    color: '#00ff9d',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  entryNotes: {
+    color: '#888',
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
   },
 }); 

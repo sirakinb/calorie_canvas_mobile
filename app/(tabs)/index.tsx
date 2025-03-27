@@ -17,73 +17,40 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { identifyFoodFromImage, identifyFoodFromText } from '../../src/utils/geminiApi';
-import { parseAndAnalyzeIngredients } from '../../src/utils/spoonacularApi';
+import { identifyFoodFromImage, identifyFoodFromText } from '../../utils/geminiApi';
+import { getNutrition } from '../../utils/spoonacularApi';
+
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 export default function TrackMeal() {
   const [mealDescription, setMealDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [mealType, setMealType] = useState<MealType>('snack');
   const router = useRouter();
 
-  const handleImagePick = async () => {
+  const pickImage = async (sourceType: 'camera' | 'library') => {
     try {
-      // Request permission first
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to upload food photos.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
+      // For iOS Simulator, we'll use a simplified configuration
+      const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false, // Disable editing in simulator
         quality: 1,
-        base64: true,
-      });
+        // Remove aspect ratio constraint for simulator
+      };
 
-      if (!result.canceled) {
-        const asset = result.assets[0];
-        if (asset.base64) {
-          const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-          setSelectedImage(base64Image);
-          setMealDescription(''); // Clear description when new image is selected
-        }
+      // In simulator, camera won't work, so default to library if camera is selected
+      const result = await ImagePicker.launchImageLibraryAsync(options);
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image from library');
-      console.error(error);
-    }
-  };
-
-  const handleTakePhoto = async () => {
-    try {
-      // Request camera permission
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your camera to take food photos.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-        base64: true,
-      });
-
-      if (!result.canceled) {
-        const asset = result.assets[0];
-        if (asset.base64) {
-          const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-          setSelectedImage(base64Image);
-          setMealDescription(''); // Clear description when new photo is taken
-        }
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
-      console.error(error);
+      Alert.alert(
+        'Error',
+        'Failed to access photo library. Please try again.'
+      );
     }
   };
 
@@ -97,7 +64,6 @@ export default function TrackMeal() {
     try {
       let foodInfo;
       
-      // If there's an image, analyze it with Gemini first
       if (selectedImage) {
         foodInfo = await identifyFoodFromImage(selectedImage, mealDescription);
       } else if (mealDescription) {
@@ -108,29 +74,50 @@ export default function TrackMeal() {
         throw new Error('Failed to identify food');
       }
 
-      // Get nutrition data from Spoonacular
-      const nutritionData = await parseAndAnalyzeIngredients(foodInfo.ingredients);
+      console.log('Food identified:', foodInfo);
+      const nutritionData = await getNutrition(foodInfo.description);
       
-      // Navigate to dashboard with the new entry
+      if (!nutritionData) {
+        throw new Error('Failed to get nutrition data');
+      }
+
+      console.log('Nutrition data:', nutritionData);
       router.push({
         pathname: "/dashboard",
         params: {
           newEntry: JSON.stringify({
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            date: new Date().toISOString(),
             imageUri: selectedImage,
             description: foodInfo.description,
             nutrition: nutritionData,
+            meal_type: mealType,
+            notes: notes.trim() || undefined
           }),
         },
       });
     } catch (error) {
+      console.error('Error analyzing nutrition:', error);
       Alert.alert('Error', 'Failed to analyze nutrition. Please try again.');
-      console.error('Error in food analysis:', error);
     } finally {
       setIsAnalyzing(false);
     }
   };
+
+  const MealTypeButton = ({ type, label }: { type: MealType; label: string }) => (
+    <TouchableOpacity
+      style={[
+        styles.mealTypeButton,
+        mealType === type && styles.mealTypeButtonSelected
+      ]}
+      onPress={() => setMealType(type)}
+    >
+      <Text style={[
+        styles.mealTypeButtonText,
+        mealType === type && styles.mealTypeButtonTextSelected
+      ]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -148,7 +135,7 @@ export default function TrackMeal() {
             ) : (
               <TouchableOpacity
                 style={styles.scanButton}
-                onPress={handleTakePhoto}
+                onPress={() => pickImage('camera')}
               >
                 <View style={styles.scanButtonContent}>
                   <Ionicons name="scan-circle-outline" size={80} color="#4CAF50" />
@@ -160,7 +147,7 @@ export default function TrackMeal() {
             {!selectedImage && (
               <TouchableOpacity
                 style={[styles.button, styles.uploadButton]}
-                onPress={handleImagePick}
+                onPress={() => pickImage('library')}
               >
                 <Ionicons name="cloud-upload" size={24} color="#fff" />
                 <Text style={styles.buttonText}>
@@ -173,7 +160,7 @@ export default function TrackMeal() {
               <View style={styles.buttonRow}>
                 <TouchableOpacity
                   style={[styles.button, styles.uploadButton, styles.halfButton]}
-                  onPress={handleImagePick}
+                  onPress={() => pickImage('library')}
                 >
                   <Ionicons name="cloud-upload" size={24} color="#fff" />
                   <Text style={styles.buttonText}>Change</Text>
@@ -181,7 +168,7 @@ export default function TrackMeal() {
 
                 <TouchableOpacity
                   style={[styles.button, styles.cameraButton, styles.halfButton]}
-                  onPress={handleTakePhoto}
+                  onPress={() => pickImage('camera')}
                 >
                   <Ionicons name="camera" size={24} color="#fff" />
                   <Text style={styles.buttonText}>Retake</Text>
@@ -189,12 +176,32 @@ export default function TrackMeal() {
               </View>
             )}
 
+            {/* Meal Type Selection */}
+            <View style={styles.mealTypeContainer}>
+              <Text style={styles.sectionTitle}>Meal Type</Text>
+              <View style={styles.mealTypeButtons}>
+                <MealTypeButton type="breakfast" label="Breakfast" />
+                <MealTypeButton type="lunch" label="Lunch" />
+                <MealTypeButton type="dinner" label="Dinner" />
+                <MealTypeButton type="snack" label="Snack" />
+              </View>
+            </View>
+
             <TextInput
               style={styles.input}
               placeholder="Describe your meal (optional)..."
               placeholderTextColor="#666"
               value={mealDescription}
               onChangeText={setMealDescription}
+              multiline
+            />
+
+            <TextInput
+              style={[styles.input, styles.notesInput]}
+              placeholder="Add notes (optional)..."
+              placeholderTextColor="#666"
+              value={notes}
+              onChangeText={setNotes}
               multiline
             />
 
@@ -363,5 +370,45 @@ const styles = StyleSheet.create({
     color: '#ccc',
     marginLeft: 10,
     fontSize: 16,
+  },
+  mealTypeContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    color: 'white',
+    marginBottom: 12,
+  },
+  mealTypeButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 5,
+  },
+  mealTypeButton: {
+    backgroundColor: '#2a2a2a',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 20,
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 3,
+  },
+  mealTypeButtonSelected: {
+    backgroundColor: '#00ff9d',
+  },
+  mealTypeButtonText: {
+    color: '#888',
+    fontSize: 13,
+    textAlign: 'center',
+    flexShrink: 1,
+    flexWrap: 'nowrap',
+  },
+  mealTypeButtonTextSelected: {
+    color: '#1a1a1a',
+    fontWeight: 'bold',
+  },
+  notesInput: {
+    height: 80,
   },
 }); 

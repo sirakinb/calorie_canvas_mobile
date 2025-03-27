@@ -22,24 +22,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const checkProfileCompletion = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('daily_calorie_goal, daily_protein_goal, daily_carbs_goal, daily_fat_goal')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error checking profile:', error);
+      return false;
+    }
+
+    // Check that all nutrition goals are explicitly set (not null and not default values)
+    const hasExplicitGoals = 
+      data?.daily_calorie_goal !== null && 
+      data?.daily_protein_goal !== null && 
+      data?.daily_carbs_goal !== null && 
+      data?.daily_fat_goal !== null && 
+      // Also check against common default values
+      data?.daily_calorie_goal !== 2000 &&
+      data?.daily_protein_goal !== 150 &&
+      data?.daily_carbs_goal !== 250 &&
+      data?.daily_fat_goal !== 65;
+
+    console.log('Profile completion status:', {
+      userId,
+      goals: data,
+      hasExplicitGoals
+    });
+
+    return hasExplicitGoals;
+  };
+
   useEffect(() => {
-    // Check for existing session
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('Auth state changed:', { event: _event, userId: session?.user?.id });
+      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
 
-      if (session) {
-        router.replace('/(tabs)');
+      if (session?.user) {
+        try {
+          const isProfileComplete = await checkProfileCompletion(session.user.id);
+          console.log('Profile completion check:', { isProfileComplete, userId: session.user.id });
+          
+          if (!isProfileComplete) {
+            console.log('Redirecting to onboarding...');
+            await router.replace('/onboarding');
+          } else {
+            console.log('Redirecting to tabs...');
+            await router.replace('/(tabs)');
+          }
+        } catch (error) {
+          console.error('Error during auth state change routing:', error);
+        }
       } else {
-        router.replace('/(auth)/sign-in');
+        console.log('No session, redirecting to sign-in...');
+        await router.replace('/(auth)/sign-in');
       }
     });
 
@@ -70,25 +119,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Create user profile after successful signup
     if (data?.user) {
-      const { error: profileError } = await supabase
+      console.log('Creating profile for user:', data.user.id);
+      
+      // Create/update profile with explicitly null goals
+      const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
           id: data.user.id,
           updated_at: new Date().toISOString(),
           username: `user_${data.user.id.substring(0, 8)}`,
           full_name: `User ${data.user.id.substring(0, 8)}`,
-          avatar_url: null
+          avatar_url: null,
+          daily_calorie_goal: null,
+          daily_protein_goal: null,
+          daily_carbs_goal: null,
+          daily_fat_goal: null
+        }, {
+          onConflict: 'id'
         });
 
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
+      if (upsertError) {
+        console.error('Error upserting profile:', upsertError);
+        throw upsertError;
       }
+
+      // Verify the profile was created with null goals
+      const { data: profile, error: verifyError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (verifyError) {
+        console.error('Error verifying profile:', verifyError);
+      } else {
+        console.log('Created/updated profile:', profile);
+      }
+
+      // Let the auth state change listener handle the routing
+      setUser(data.user);
+      setSession(data.session);
     }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const resetPassword = async (email: string) => {

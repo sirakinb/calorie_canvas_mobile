@@ -15,7 +15,6 @@ import { ThemedView } from '../../components/ThemedView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TextInput } from 'react-native-gesture-handler';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 import logo from '../../assets/images/logo4.png';
 
 export default function SignUpScreen() {
@@ -41,42 +40,14 @@ export default function SignUpScreen() {
       setLoading(true);
       console.log('Starting sign up process...');
       
-      // Try a direct API call first
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      console.log('Sign up response:', {
-        error: error?.message,
-        userId: data?.user?.id,
-        session: data?.session ? 'exists' : 'none'
-      });
-
-      if (error) {
-        console.error('Sign up error details:', {
-          message: error.message,
-          status: error.status,
-          name: error.name
-        });
-        Alert.alert('Error', error.message || 'Failed to sign up');
-        return;
-      }
-
-      if (data?.user) {
-        console.log('Sign up successful:', {
-          userId: data.user.id,
-          email: data.user.email
-        });
-        Alert.alert(
-          'Success',
-          'Account created successfully! You can now sign in.',
-          [{ text: 'OK', onPress: () => router.push('/sign-in') }]
-        );
-      }
-    } catch (error) {
-      console.error('Unexpected error during sign up:', error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      await signUp(email, password);
+      
+      // The AuthContext will handle the redirect to onboarding
+      console.log('Sign up successful, AuthContext will handle redirect');
+      
+    } catch (error: any) {
+      console.error('Sign up error:', error);
+      Alert.alert('Error', error.message || 'Failed to sign up');
     } finally {
       setLoading(false);
     }
@@ -113,22 +84,30 @@ export default function SignUpScreen() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                textContentType="emailAddress"
+                autoComplete="email"
               />
               <TextInput
                 style={styles.input}
                 placeholder="Password"
                 placeholderTextColor="#666"
+                secureTextEntry
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="oneTimeCode"
               />
               <TextInput
                 style={styles.input}
                 placeholder="Confirm Password"
                 placeholderTextColor="#666"
+                secureTextEntry
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="oneTimeCode"
               />
 
               <TouchableOpacity
