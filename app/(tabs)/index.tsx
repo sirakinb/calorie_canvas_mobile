@@ -54,6 +54,20 @@ export default function TrackMeal() {
     }
   };
 
+  // Add a helper function to clean display text
+  function cleanDisplayText(description: string): string {
+    return description
+      .replace(/Here's a (?:concise )?description of the food items?(?:\s*in the image)?:\s*/i, '')
+      .replace(/(?:the\s+)?(?:image\s+)?shows\s*/i, '')
+      .replace(/(?:I\s+)?(?:can\s+)?see\s*/i, '')
+      .replace(/(?:appears\s+to\s+be|appears|possibly|probably|seems\s+to\s+be|seems|looks\s+like)\s*/gi, '')
+      .replace(/(?:what\s+)?(?:appears|looks|seems)\s+to\s+be\s*/gi, '')
+      .replace(/maybe\s*/i, '')
+      .replace(/perhaps\s*/i, '')
+      .replace(/likely\s*/i, '')
+      .trim();
+  }
+
   const handleAnalyzeNutrition = async () => {
     if (!selectedImage && !mealDescription.trim()) {
       Alert.alert('Missing Input', 'Please provide an image and/or description of your meal');
@@ -63,40 +77,87 @@ export default function TrackMeal() {
     setIsAnalyzing(true);
     try {
       let foodInfo;
+      let imageBase64: string | undefined;
       
+      // Get base64 of image if available
       if (selectedImage) {
-        foodInfo = await identifyFoodFromImage(selectedImage, mealDescription);
-      } else if (mealDescription) {
-        foodInfo = await identifyFoodFromText(mealDescription);
+        try {
+          const response = await fetch(selectedImage);
+          const blob = await response.blob();
+          const base64WithPrefix = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+          // Remove data:image/jpeg;base64, prefix
+          imageBase64 = base64WithPrefix.split(',')[1];
+        } catch (error) {
+          console.error('Error converting image to base64:', error);
+        }
+      }
+      
+      // Step 1: Identify the food
+      try {
+        if (selectedImage) {
+          console.log('Analyzing food from image...');
+          foodInfo = await identifyFoodFromImage(selectedImage, mealDescription);
+        } else if (mealDescription) {
+          console.log('Analyzing food from text description...');
+          foodInfo = await identifyFoodFromText(mealDescription);
+        }
+      } catch (identifyError) {
+        console.error('Error identifying food:', identifyError);
+        Alert.alert(
+          'Food Identification Error',
+          'Could not identify the food. Please try again with a clearer image or more detailed description.'
+        );
+        setIsAnalyzing(false);
+        return;
       }
 
       if (!foodInfo) {
-        throw new Error('Failed to identify food');
+        Alert.alert('Analysis Error', 'Could not identify the food. Please try again with a clearer image or more detailed description.');
+        setIsAnalyzing(false);
+        return;
       }
 
       console.log('Food identified:', foodInfo);
-      const nutritionData = await getNutrition(foodInfo.description);
       
-      if (!nutritionData) {
-        throw new Error('Failed to get nutrition data');
-      }
+      // Step 2: Get nutrition data using both description and image
+      try {
+        const nutritionData = await getNutrition(foodInfo.description, imageBase64);
+        console.log('Nutrition data:', nutritionData);
+        
+        // Create the meal entry
+        const newMeal = {
+          id: Date.now().toString(),
+          type: mealType,
+          description: cleanDisplayText(foodInfo.description),
+          imageUri: selectedImage,
+          nutrition: nutritionData,
+          timestamp: new Date().toISOString(),
+        };
 
-      console.log('Nutrition data:', nutritionData);
-      router.push({
-        pathname: "/dashboard",
-        params: {
-          newEntry: JSON.stringify({
-            imageUri: selectedImage,
-            description: foodInfo.description,
-            nutrition: nutritionData,
-            meal_type: mealType,
-            notes: notes.trim() || undefined
-          }),
-        },
-      });
+        // Add to meals list
+        router.push({
+          pathname: "/dashboard",
+          params: {
+            newEntry: JSON.stringify(newMeal),
+          },
+        });
+      } catch (nutritionError) {
+        console.error('Error getting nutrition data:', nutritionError);
+        Alert.alert(
+          'Error',
+          'Could not analyze nutrition information. Using estimated values.'
+        );
+      }
     } catch (error) {
-      console.error('Error analyzing nutrition:', error);
-      Alert.alert('Error', 'Failed to analyze nutrition. Please try again.');
+      console.error('Error in meal analysis:', error);
+      Alert.alert(
+        'Error',
+        'An error occurred while analyzing your meal. Please try again.'
+      );
     } finally {
       setIsAnalyzing(false);
     }

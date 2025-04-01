@@ -7,8 +7,8 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<{ user: User; session: Session; }>;
+  signUp: (email: string, password: string) => Promise<{ user: User | null; session: Session | null; }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signInWithPhone: (phoneNumber: string) => Promise<void>;
@@ -70,26 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-
-      if (session?.user) {
-        try {
-          const isProfileComplete = await checkProfileCompletion(session.user.id);
-          console.log('Profile completion check:', { isProfileComplete, userId: session.user.id });
-          
-          if (!isProfileComplete) {
-            console.log('Redirecting to onboarding...');
-            await router.replace('/onboarding');
-          } else {
-            console.log('Redirecting to tabs...');
-            await router.replace('/(tabs)');
-          }
-        } catch (error) {
-          console.error('Error during auth state change routing:', error);
-        }
-      } else {
-        console.log('No session, redirecting to sign-in...');
-        await router.replace('/(auth)/sign-in');
-      }
     });
 
     return () => {
@@ -98,30 +78,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log('Starting sign in process for:', email);
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) throw error;
+
+    if (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+
+    console.log('Sign in successful:', data);
+
+    if (data.user) {
+      // Set session and user immediately
+      setUser(data.user);
+      setSession(data.session);
+    } else {
+      console.log('No user data returned from sign in');
+    }
+
+    return data;
   };
 
   const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          email: email
-        }
+    console.log('Starting sign up process for:', email);
+    
+    try {
+      // First, create the account
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('Sign up error:', error);
+        throw error;
       }
-    });
-    if (error) throw error;
 
-    // Create user profile after successful signup
-    if (data?.user) {
+      console.log('Sign up response:', data);
+
+      if (!data?.user) {
+        console.error('No user data returned from sign up');
+        throw new Error('Failed to create account. Please try again.');
+      }
+
+      // Create user profile after successful signup
       console.log('Creating profile for user:', data.user.id);
       
-      // Create/update profile with explicitly null goals
       const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
@@ -134,41 +139,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           daily_protein_goal: null,
           daily_carbs_goal: null,
           daily_fat_goal: null
-        }, {
-          onConflict: 'id'
         });
 
       if (upsertError) {
-        console.error('Error upserting profile:', upsertError);
+        console.error('Error creating profile:', upsertError);
         throw upsertError;
       }
 
-      // Verify the profile was created with null goals
-      const { data: profile, error: verifyError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
+      console.log('Profile created successfully');
 
-      if (verifyError) {
-        console.error('Error verifying profile:', verifyError);
-      } else {
-        console.log('Created/updated profile:', profile);
+      // Explicitly sign in after successful sign up
+      console.log('Signing in after successful sign up');
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError) {
+        console.error('Error signing in after sign up:', signInError);
+        throw signInError;
       }
 
-      // Let the auth state change listener handle the routing
-      setUser(data.user);
-      setSession(data.session);
+      if (!signInData.session) {
+        console.error('No session after sign in');
+        throw new Error('Failed to sign in after account creation');
+      }
+
+      // Set the session and user
+      setUser(signInData.user);
+      setSession(signInData.session);
+
+      return signInData;
+      
+    } catch (error) {
+      console.error('Error in sign up process:', error);
+      throw error;
     }
   };
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
+      console.log('Attempting to sign out...');
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Error from Supabase signOut:', error);
+        throw error;
+      }
+      
+      console.log('Supabase signOut successful');
+      
+      // Clear session and user state
       setUser(null);
       setSession(null);
+      
+      // Force navigation to sign-in
+      console.log('Navigating to sign-in page...');
+      await router.replace('/(auth)/sign-in');
     } catch (error) {
       console.error('Error signing out:', error);
+      throw error;
     }
   };
 

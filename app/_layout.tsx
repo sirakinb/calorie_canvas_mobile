@@ -25,6 +25,11 @@ const useProtectedRoute = (user: any) => {
       userId: user?.id 
     });
 
+    // Temporary bypass - don't check routes for now
+    console.log('Temporarily bypassing protected route check for debugging');
+    return;
+
+    /* Original code commented out for now
     const checkProfile = async () => {
       if (!user) {
         console.log('No user, skipping profile check');
@@ -67,6 +72,7 @@ const useProtectedRoute = (user: any) => {
     };
 
     checkProfile();
+    */
   }, [user, segments]);
 
   return isProfileComplete;

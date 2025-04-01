@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { TextInput } from 'react-native-gesture-handler';
 import { useAuth } from '../../contexts/AuthContext';
 import logo from '../../assets/images/logo4.png';
+import { supabase } from '../../lib/supabase';
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
@@ -40,14 +41,64 @@ export default function SignUpScreen() {
       setLoading(true);
       console.log('Starting sign up process...');
       
-      await signUp(email, password);
+      // Add a manual delay to ensure all console logs appear
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // The AuthContext will handle the redirect to onboarding
-      console.log('Sign up successful, AuthContext will handle redirect');
+      // Try manual sign-up with Supabase directly
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
       
+      if (error) {
+        throw error;
+      }
+      
+      console.log('Direct sign up successful:', data);
+      
+      // Create a profile directly
+      if (data?.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            updated_at: new Date().toISOString(),
+            username: `user_${data.user.id.substring(0, 8)}`,
+            full_name: `User ${data.user.id.substring(0, 8)}`,
+            avatar_url: null,
+            daily_calorie_goal: null,
+            daily_protein_goal: null,
+            daily_carbs_goal: null,
+            daily_fat_goal: null
+          });
+          
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+        } else {
+          console.log('Profile created successfully');
+        }
+        
+        // Now try to sign in directly
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        
+        if (signInError) {
+          console.error('Sign in after signup error:', signInError);
+        } else {
+          console.log('Direct sign in successful:', signInData);
+          
+          // Force navigation to onboarding
+          router.replace('/onboarding');
+        }
+      }
     } catch (error: any) {
       console.error('Sign up error:', error);
-      Alert.alert('Error', error.message || 'Failed to sign up');
+      Alert.alert(
+        'Sign Up Error',
+        error.message || 'Failed to sign up. Please try again.'
+      );
     } finally {
       setLoading(false);
     }

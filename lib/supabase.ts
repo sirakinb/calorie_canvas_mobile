@@ -15,9 +15,55 @@ console.log('Initializing Supabase with:', {
   keyPreview: supabaseAnonKey.substring(0, 10) + '...',
 });
 
+// Logging AsyncStorage for debugging
+const logStorageOperation = async (operation: string, key?: string) => {
+  try {
+    if (key) {
+      const keys = await AsyncStorage.getAllKeys();
+      console.log(`${operation} - Available keys:`, keys);
+      if (keys.includes(key)) {
+        const value = await AsyncStorage.getItem(key);
+        console.log(`${operation} - Value for ${key}:`, value ? 'exists' : 'null');
+      } else {
+        console.log(`${operation} - Key ${key} not found`);
+      }
+    }
+  } catch (e) {
+    console.error(`Error in ${operation}:`, e);
+  }
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: {
+      async getItem(key) {
+        try {
+          const data = await AsyncStorage.getItem(key);
+          console.log(`Storage getItem for: ${key} - Result:`, data ? 'found' : 'null');
+          return data;
+        } catch (error) {
+          console.error(`Storage getItem error for ${key}:`, error);
+          return null;
+        }
+      },
+      async setItem(key, value) {
+        try {
+          await AsyncStorage.setItem(key, value);
+          console.log(`Storage setItem for: ${key} - Value set`);
+          await logStorageOperation('setItem', key);
+        } catch (error) {
+          console.error(`Storage setItem error for ${key}:`, error);
+        }
+      },
+      async removeItem(key) {
+        try {
+          await AsyncStorage.removeItem(key);
+          console.log(`Storage removeItem for: ${key} - Removed`);
+        } catch (error) {
+          console.error(`Storage removeItem error for ${key}:`, error);
+        }
+      },
+    },
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
@@ -30,5 +76,13 @@ supabase.auth.getSession().then(({ data, error }) => {
     console.error('Supabase connection error:', error.message);
   } else {
     console.log('Supabase connection successful');
+    if (data.session) {
+      console.log('Active session found:', {
+        userId: data.session.user.id,
+        expires: data.session.expires_at,
+      });
+    } else {
+      console.log('No active session found');
+    }
   }
 }); 

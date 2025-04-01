@@ -34,10 +34,53 @@ export default function SignInScreen() {
 
     try {
       setLoading(true);
-      await signInWithEmail(email, password);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to sign in');
-      console.error(error);
+      console.log('Starting direct sign in process...');
+      
+      // Try direct Supabase sign-in
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('Direct sign in error:', error);
+        throw error;
+      }
+      
+      console.log('Direct sign in successful:', data);
+      
+      if (data.session) {
+        console.log('Session established, checking profile...');
+        
+        // Fetch profile
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('daily_calorie_goal')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        } else {
+          console.log('Profile fetched:', profileData);
+          
+          const hasCompletedSetup = profileData?.daily_calorie_goal != null;
+          
+          if (!hasCompletedSetup) {
+            console.log('Profile incomplete, navigating to onboarding...');
+            await router.replace('/onboarding');
+          } else {
+            console.log('Profile complete, navigating to tabs...');
+            await router.replace('/(tabs)');
+          }
+        }
+      } else {
+        console.error('No session after sign in');
+        throw new Error('Failed to establish session');
+      }
+    } catch (error: any) {
+      console.error('Sign in process error:', error);
+      Alert.alert('Error', error.message || 'Failed to sign in');
     } finally {
       setLoading(false);
     }

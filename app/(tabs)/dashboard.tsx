@@ -244,8 +244,8 @@ export default function Dashboard() {
       <StatusBar style="light" />
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Text style={styles.logo}>CalorieCanvas</Text>
-          <Text style={styles.tagline}>Track your nutrition with precision</Text>
+          <Text style={styles.title}>Calorie Canvas</Text>
+          <Text style={styles.subtitle}>Track your nutrition with precision</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <MaterialIcons name="logout" size={24} color="#ff6b00" />
@@ -368,25 +368,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333',
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   headerContent: {
     flex: 1,
+    marginRight: 16,
   },
-  logoutButton: {
-    padding: 8,
-  },
-  logo: {
+  title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: 'white',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  tagline: {
+  subtitle: {
     fontSize: 16,
     color: '#888',
-    textAlign: 'center',
+  },
+  logoutButton: {
+    padding: 8,
+    marginTop: 8,
   },
   content: {
     flex: 1,

@@ -1,6 +1,6 @@
-# CalorieCanvas Mobile
+# Calorie Canvas Mobile
 
-A React Native mobile app that uses AI to analyze food and provide nutritional information. Built with Expo and OpenAI's GPT-4 Vision.
+A React Native mobile app that uses AI to analyze food and provide nutritional information. Built with Expo, Google's Gemini AI, and Spoonacular API.
 
 ## Features
 
@@ -9,14 +9,21 @@ A React Native mobile app that uses AI to analyze food and provide nutritional i
 - 🧮 Get detailed nutritional analysis
 - 📊 Track daily nutrition intake
 - 🎨 Beautiful, modern UI
+- 🔄 Offline support
+- 👤 User authentication with Supabase
+- 🗑️ Swipe-to-delete with undo
+- 📱 Cross-platform (iOS/Android)
 
 ## Tech Stack
 
 - React Native with Expo
 - TypeScript
-- OpenAI GPT-4 and GPT-4 Vision
+- Google's Gemini AI for image and text analysis
+- Spoonacular API for nutritional data
+- Supabase for authentication and data storage
 - Expo Router for navigation
-- Superwall for monetization
+- React Native Reanimated for animations
+- Expo Image Manipulator for image processing
 
 ## Getting Started
 
@@ -26,6 +33,9 @@ A React Native mobile app that uses AI to analyze food and provide nutritional i
 - npm or yarn
 - Expo CLI
 - iOS Simulator or Android Emulator (optional)
+- Supabase account
+- Google Cloud account (for Gemini AI)
+- Spoonacular account
 
 ### Installation
 
@@ -43,8 +53,9 @@ npm install
 3. Set up environment variables:
 - Copy `.env.example` to `.env`
 - Fill in your API keys:
-  - OpenAI Project API key
-  - Superwall API keys (iOS/Android)
+  - Google Cloud API key (for Gemini AI)
+  - Spoonacular API key
+  - Supabase URL and anon key
 
 4. Start the development server:
 ```bash
@@ -58,10 +69,33 @@ npx expo start
 
 ## Environment Variables
 
-Required environment variables:
-- `EXPO_PUBLIC_OPENAI_API_KEY`: Your OpenAI project API key
-- `EXPO_PUBLIC_SUPERWALL_API_KEY_IOS`: Superwall iOS API key
-- `EXPO_PUBLIC_SUPERWALL_API_KEY_ANDROID`: Superwall Android API key
+Required environment variables in your `.env` file:
+```
+EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
+EXPO_PUBLIC_SPOONACULAR_API_KEY=your_spoonacular_api_key
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+## Features in Detail
+
+### AI-Powered Food Analysis
+- Uses Gemini AI to analyze food images and text descriptions
+- Provides accurate food identification
+- Handles complex dishes and multiple items
+
+### Nutritional Analysis
+- Spoonacular API integration for detailed nutritional data
+- Fallback to AI estimation when exact matches aren't found
+- Comprehensive macro and micronutrient information
+
+### User Experience
+- Clean, intuitive interface
+- Dark mode design
+- Haptic feedback
+- Smooth animations
+- Offline capability
+- Undo support for deleted entries
 
 ## Contributing
 
